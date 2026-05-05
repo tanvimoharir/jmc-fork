@@ -1,0 +1,74 @@
+name: J2K Evaluation Pipeline
+
+on:
+  push:
+    branches: [ main, j2k-eval ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  convert-and-evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install Kotlin compiler
+        run: |
+          curl -L "https://github.com/JetBrains/kotlin/releases/download/v1.9.22/kotlin-compiler-1.9.22.zip" -o kotlin-compiler.zip
+          unzip -q kotlin-compiler.zip -d /opt/kotlin
+          echo "/opt/kotlin/kotlinc/bin" >> $GITHUB_PATH
+
+      - name: Cache IntelliJ IDEA CE
+        id: cache-idea
+        uses: actions/cache@v4
+        with:
+          path: /opt/idea-IC
+          key: idea-IC-2023.3.8-linux
+
+      - name: Download IntelliJ IDEA CE
+        if: steps.cache-idea.outputs.cache-hit != 'true'
+        run: |
+          curl -L "https://download.jetbrains.com/idea/ideaIC-2023.3.8.tar.gz" -o /tmp/idea.tar.gz
+          mkdir -p /opt/idea-IC
+          tar -xzf /tmp/idea.tar.gz -C /opt/idea-IC --strip-components=1
+          rm /tmp/idea.tar.gz
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run J2K conversion
+        run: |
+          chmod +x j2k-eval/scripts/run-j2k.sh
+          ./j2k-eval/scripts/run-j2k.sh
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Run evaluation
+        run: |
+          ./gradlew :j2k-eval:run --args="--source core/src/main/java --converted j2k-eval/output/converted-kt --output j2k-eval/output"
+
+      - name: Upload evaluation report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: j2k-evaluation-report
+          path: j2k-eval/output/
+          retention-days: 30
+
+      - name: Post report to job summary
+        if: always()
+        run: |
+          if [ -f j2k-eval/output/evaluation-report.md ]; then
+            cat j2k-eval/output/evaluation-report.md >> $GITHUB_STEP_SUMMARY
+          fi
