@@ -43,7 +43,7 @@ object KotlinCompiler {
         val kotlincPath = findKotlinc()
 
         val processBuilder = ProcessBuilder(
-            listOf(kotlincPath, "-no-stdlib") + ktFiles.map { it.absolutePath }
+            listOf(kotlincPath) + ktFiles.map { it.absolutePath }
         ).apply {
             redirectErrorStream(true)
             directory(sourceDir.parentFile)
