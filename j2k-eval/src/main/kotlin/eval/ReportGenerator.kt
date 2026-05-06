@@ -117,6 +117,30 @@ object ReportGenerator {
                 appendLine()
             }
 
+            // Quality metrics summary
+            if (analysisResults.isNotEmpty()) {
+                appendLine("## Conversion Quality")
+                appendLine()
+                val totalBangBang = analysisResults.sumOf { it.qualityMetrics.bangBangCount }
+                val avgLineRatio = analysisResults.map { it.qualityMetrics.lineRatio }.average()
+                val totalInstanceofChains = analysisResults.sumOf { it.qualityMetrics.instanceofChainCount }
+                val totalStringConcats = analysisResults.sumOf { it.qualityMetrics.stringConcatCount }
+                val totalExplicitCasts = analysisResults.sumOf { it.qualityMetrics.explicitCastCount }
+                val totalJvmAnnotations = analysisResults.sumOf { it.qualityMetrics.jvmAnnotationCount }
+                val totalOpenClasses = analysisResults.sumOf { it.qualityMetrics.openClassCount }
+
+                appendLine("| Metric | Value | Interpretation |")
+                appendLine("|--------|-------|----------------|")
+                appendLine("| `!!` (non-null assertions) | $totalBangBang | ${if (totalBangBang == 0) "Good — no forced unwraps" else "Code smell — converter couldn't infer nullability"} |")
+                appendLine("| Line ratio (Kt/Java) | ${"%.2f".format(avgLineRatio)} | ${if (avgLineRatio < 1.0) "Good — Kotlin is more concise" else if (avgLineRatio < 1.1) "Neutral — similar verbosity" else "Verbose — converter didn't leverage Kotlin conciseness"} |")
+                appendLine("| `if-else instanceof` chains | $totalInstanceofChains | ${if (totalInstanceofChains == 0) "Good — all converted to `when`" else "Unconverted — should be `when` expressions"} |")
+                appendLine("| String concatenation (`+`) | $totalStringConcats | ${if (totalStringConcats == 0) "Good — uses string templates" else "Unconverted — should use `\\\${}` templates"} |")
+                appendLine("| Explicit casts (`as`) | $totalExplicitCasts | ${if (totalExplicitCasts < 5) "Low — good smart cast usage" else "High — converter retained explicit casts"} |")
+                appendLine("| JVM interop annotations | $totalJvmAnnotations | ${if (totalJvmAnnotations > 0) "Good — preserves Java interop" else "None — may break Java callers"} |")
+                appendLine("| `open` classes | $totalOpenClasses | ${if (totalOpenClasses > 0) "Correct — needed for inheritance" else "All final — may break subclassing"} |")
+                appendLine()
+            }
+
             // Observations — generated from actual results
             appendLine("## Observations")
             appendLine()
@@ -166,13 +190,13 @@ object ReportGenerator {
                 sb.appendLine("- **Unresolved references: $unresolvedCount errors** — caused by missing third-party dependencies (log4j, ASM, JUnit) not on the standalone compilation classpath. Not a converter defect.")
             }
             if (smartCastCount > 0) {
-                sb.appendLine("- **Smart cast failures: $smartCastCount errors** — the converter uses `var` for fields that are later type-checked. Kotlin's type system rejects smart casts on mutable properties. This is a known J2K limitation.")
+                sb.appendLine("- **Smart cast failures: $smartCastCount errors** — a J2K converter deficiency. The converter translates Java fields as `var` (mutable) and removes explicit casts, relying on Kotlin's smart casts. However, smart casts don't work on `var` properties ([Kotlin docs](https://kotlinlang.org/docs/typecasts.html#smart-casts)). The converter should introduce local `val` copies (e.g., `val left = leftOperand`) before type checks, but it doesn't.")
             }
             if (typeMismatchCount > 0) {
-                sb.appendLine("- **Type mismatches: $typeMismatchCount errors** — the converter inferred nullable types (`String?`) where non-null (`String`) was expected. Indicates overly conservative nullability inference.")
+                sb.appendLine("- **Type mismatches: $typeMismatchCount errors** — a J2K converter deficiency. The converter inferred nullable types (`String?`) for generic collection elements where the original Java code used non-null values. For example, `List<String>` stream lambdas get parameter type `String?` instead of `String`, causing `startsWith(prefix)` to fail.")
             }
             if (privateAccessCount > 0) {
-                sb.appendLine("- **Private access errors: $privateAccessCount errors** — the converter produced `package-info.kt` files that reference private inner classes. This is a converter bug (Kotlin has no `package-info` equivalent).")
+                sb.appendLine("- **Private access errors: $privateAccessCount errors** — a J2K converter deficiency. The converter transforms `package-info.java` (which contains only Javadoc and annotations in Java) into `package-info.kt` files with import statements that reference private inner classes. Kotlin has no `package-info` equivalent; these files should be converted to bare package declarations only.")
             }
         }
 

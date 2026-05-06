@@ -31,12 +31,14 @@ class StructuralAnalyzer {
         val javaMetrics = extractJavaMetrics(javaFile)
         val kotlinMetrics = extractKotlinMetrics(kotlinSource)
         val idiomMetrics = analyzeKotlinIdioms(kotlinSource)
+        val qualityMetrics = analyzeConversionQuality(javaFile, kotlinSource)
 
         return AnalysisResult(
             fileName = javaFile.name,
             javaMetrics = javaMetrics,
             kotlinMetrics = kotlinMetrics,
             idiomMetrics = idiomMetrics,
+            qualityMetrics = qualityMetrics,
             structuralMatch = computeStructuralMatch(javaMetrics, kotlinMetrics)
         )
     }
@@ -120,6 +122,56 @@ class StructuralAnalyzer {
     }
 
     /**
+     * Analyze conversion quality beyond just structural preservation.
+     * Detects code smells, unconverted patterns, and measures conciseness.
+     */
+    private fun analyzeConversionQuality(javaFile: File, kotlinSource: String): QualityMetrics {
+        val javaSource = javaFile.readText()
+        val ktLines = kotlinSource.lines()
+        val javaLines = javaSource.lines()
+
+        // Count non-null assertions (!!) — a sign of poor nullability inference
+        val bangBangCount = Regex("""!!""").findAll(kotlinSource).count()
+
+        // Line count ratio — idiomatic Kotlin should be more concise
+        val lineRatio = if (javaLines.size > 0) ktLines.size.toDouble() / javaLines.size else 1.0
+
+        // Count unconverted patterns: if-else instanceof chains that should be `when`
+        val instanceofChains = Regex("""else if \(.+ is \w+\)""").findAll(kotlinSource).count()
+
+        // Count Java-style string concatenation that should be templates
+        val stringConcats = Regex("""\+\s*"|\"\s*\+""").findAll(kotlinSource).count()
+
+        // Check if static methods became companion object (good) or stayed top-level
+        val hasCompanionObject = kotlinSource.contains("companion object")
+        val javaStaticMethods = Regex("""static\s+\w+\s+\w+\s*\(""").findAll(javaSource).count()
+
+        // Count explicit type casts (as Type) — fewer is better in idiomatic Kotlin
+        val explicitCasts = Regex("""\bas\b\s+\w+""").findAll(kotlinSource).count()
+
+        // Check for @JvmStatic, @JvmOverloads, @Throws — signs of Java interop awareness
+        val jvmAnnotations = Regex("""@Jvm(Static|Overloads|Field)""").findAll(kotlinSource).count()
+        val throwsAnnotations = Regex("""@Throws""").findAll(kotlinSource).count()
+
+        // Check for `open` keyword usage (Kotlin classes are final by default)
+        val openClasses = Regex("""^\s*open\s+class""", RegexOption.MULTILINE).findAll(kotlinSource).count()
+        val openFunctions = Regex("""^\s*(open\s+)fun""", RegexOption.MULTILINE).findAll(kotlinSource).count()
+
+        return QualityMetrics(
+            bangBangCount = bangBangCount,
+            lineRatio = lineRatio,
+            instanceofChainCount = instanceofChains,
+            stringConcatCount = stringConcats,
+            explicitCastCount = explicitCasts,
+            jvmAnnotationCount = jvmAnnotations + throwsAnnotations,
+            openClassCount = openClasses,
+            openFunctionCount = openFunctions,
+            hasCompanionObject = hasCompanionObject,
+            javaStaticMethodCount = javaStaticMethods
+        )
+    }
+
+    /**
      * Compute a simple structural match score (0.0 to 1.0).
      * Compares how well the Kotlin output preserves the Java structure.
      */
@@ -171,11 +223,26 @@ data class IdiomMetrics(
     val lineCount: Int
 )
 
+/** Conversion quality metrics. */
+data class QualityMetrics(
+    val bangBangCount: Int,           // !! non-null assertions (code smell)
+    val lineRatio: Double,            // Kotlin lines / Java lines (< 1.0 = more concise)
+    val instanceofChainCount: Int,    // if-else instanceof that should be `when`
+    val stringConcatCount: Int,       // String + concat that should be templates
+    val explicitCastCount: Int,       // `as Type` casts
+    val jvmAnnotationCount: Int,      // @JvmStatic, @JvmOverloads, @Throws
+    val openClassCount: Int,          // open classes (needed for inheritance)
+    val openFunctionCount: Int,       // open functions
+    val hasCompanionObject: Boolean,  // static methods converted to companion
+    val javaStaticMethodCount: Int    // original static method count
+)
+
 /** Full analysis result for a single file. */
 data class AnalysisResult(
     val fileName: String,
     val javaMetrics: SourceMetrics,
     val kotlinMetrics: SourceMetrics,
     val idiomMetrics: IdiomMetrics,
+    val qualityMetrics: QualityMetrics,
     val structuralMatch: Double
 )
