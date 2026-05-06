@@ -89,6 +89,8 @@ object ReportGenerator {
             if (analysisResults.isNotEmpty()) {
                 appendLine("## Structural Analysis")
                 appendLine()
+                appendLine("Compares the number of classes, methods, and fields between the original Java and converted Kotlin. A preservation rate below 90% indicates the converter may have lost or merged structural elements.")
+                appendLine()
                 val totalJavaClasses = analysisResults.sumOf { it.javaMetrics.classCount }
                 val totalKtClasses = analysisResults.sumOf { it.kotlinMetrics.classCount }
                 val totalJavaMethods = analysisResults.sumOf { it.javaMetrics.methodCount }
@@ -96,31 +98,38 @@ object ReportGenerator {
                 val totalJavaFields = analysisResults.sumOf { it.javaMetrics.fieldCount }
                 val totalKtFields = analysisResults.sumOf { it.kotlinMetrics.fieldCount }
 
-                appendLine("| Element | Java (original) | Kotlin (converted) | Preservation |")
-                appendLine("|---------|----------------|-------------------|-------------|")
-                appendLine("| Classes | $totalJavaClasses | $totalKtClasses | ${if (totalJavaClasses > 0) "${"%.0f".format(minOf(totalKtClasses.toDouble() / totalJavaClasses, 1.0) * 100)}%" else "N/A"} |")
-                appendLine("| Methods | $totalJavaMethods | $totalKtMethods | ${if (totalJavaMethods > 0) "${"%.0f".format(minOf(totalKtMethods.toDouble() / totalJavaMethods, 1.0) * 100)}%" else "N/A"} |")
-                appendLine("| Fields | $totalJavaFields | $totalKtFields | ${if (totalJavaFields > 0) "${"%.0f".format(minOf(totalKtFields.toDouble() / totalJavaFields, 1.0) * 100)}%" else "N/A"} |")
+                appendLine("| Element | Java (original) | Kotlin (converted) | Preservation | Status |")
+                appendLine("|---------|----------------|-------------------|-------------|--------|")
+                val classPreserve = if (totalJavaClasses > 0) minOf(totalKtClasses.toDouble() / totalJavaClasses, 1.0) else 1.0
+                val methodPreserve = if (totalJavaMethods > 0) minOf(totalKtMethods.toDouble() / totalJavaMethods, 1.0) else 1.0
+                val fieldPreserve = if (totalJavaFields > 0) minOf(totalKtFields.toDouble() / totalJavaFields, 1.0) else 1.0
+                appendLine("| Classes | $totalJavaClasses | $totalKtClasses | ${"%.0f".format(classPreserve * 100)}% | ${if (classPreserve < 0.9) "⚠️ POTENTIAL ISSUE" else "OK"} |")
+                appendLine("| Methods | $totalJavaMethods | $totalKtMethods | ${"%.0f".format(methodPreserve * 100)}% | ${if (methodPreserve < 0.9) "⚠️ POTENTIAL ISSUE" else "OK"} |")
+                appendLine("| Fields | $totalJavaFields | $totalKtFields | ${"%.0f".format(fieldPreserve * 100)}% | ${if (fieldPreserve < 0.9) "⚠️ POTENTIAL ISSUE" else "OK"} |")
                 appendLine()
 
-                // Show only worst-performing files
+                // Show only worst-performing files (exclude files where Java has no measurable elements)
                 val worstFiles = analysisResults
                     .filter { it.structuralMatch < 1.0 }
+                    .filter { it.javaMetrics.classCount + it.javaMetrics.methodCount + it.javaMetrics.fieldCount > 0 }
                     .sortedBy { it.structuralMatch }
                     .take(5)
                 if (worstFiles.isNotEmpty()) {
-                    appendLine("**Lowest structural match files** (potential conversion issues):")
+                    appendLine("**Lowest structural match files:**")
                     appendLine()
-                    appendLine("| File | Match | Java (classes/methods/fields) | Kotlin (classes/methods/fields) |")
-                    appendLine("|------|-------|------------------------------|-------------------------------|")
+                    appendLine("| File | Match | Java (classes/methods/fields) | Kotlin (classes/methods/fields) | Status |")
+                    appendLine("|------|-------|------------------------------|-------------------------------|--------|")
                     worstFiles.forEach { r ->
-                        appendLine("| ${r.fileName} | ${"%.0f".format(r.structuralMatch * 100)}% | ${r.javaMetrics.classCount}/${r.javaMetrics.methodCount}/${r.javaMetrics.fieldCount} | ${r.kotlinMetrics.classCount}/${r.kotlinMetrics.methodCount}/${r.kotlinMetrics.fieldCount} |")
+                        val flag = if (r.structuralMatch < 0.5) "⚠️ POTENTIAL ISSUE" else "Low match"
+                        appendLine("| ${r.fileName} | ${"%.0f".format(r.structuralMatch * 100)}% | ${r.javaMetrics.classCount}/${r.javaMetrics.methodCount}/${r.javaMetrics.fieldCount} | ${r.kotlinMetrics.classCount}/${r.kotlinMetrics.methodCount}/${r.kotlinMetrics.fieldCount} | $flag |")
                     }
                     appendLine()
                 }
 
                 // Kotlin idiom usage — aggregate summary
                 appendLine("## Kotlin Idiom Usage")
+                appendLine()
+                appendLine("Measures how many files use idiomatic Kotlin features. Higher percentages indicate the converter produced Kotlin-native code rather than Java-with-Kotlin-syntax.")
                 appendLine()
                 val total = analysisResults.size
                 val valOverVar = analysisResults.count { it.idiomMetrics.usesValOverVar }
@@ -130,21 +139,22 @@ object ReportGenerator {
                 val usesCompanion = analysisResults.count { it.idiomMetrics.usesCompanionObject }
                 val usesDataClass = analysisResults.count { it.idiomMetrics.usesDataClass }
 
-                appendLine("| Idiom | Files Using It | Percentage |")
-                appendLine("|-------|---------------|-----------|")
-                appendLine("| Prefers `val` over `var` | $valOverVar / $total | ${"%.0f".format(valOverVar.toDouble() / total * 100)}% |")
-                appendLine("| `when` expressions | $usesWhen / $total | ${"%.0f".format(usesWhen.toDouble() / total * 100)}% |")
-                appendLine("| Null-safety operators (`?.`, `?:`) | $usesNullSafe / $total | ${"%.0f".format(usesNullSafe.toDouble() / total * 100)}% |")
-                appendLine("| String templates (`\${}`) | $usesTemplates / $total | ${"%.0f".format(usesTemplates.toDouble() / total * 100)}% |")
-                appendLine("| `companion object` | $usesCompanion / $total | ${"%.0f".format(usesCompanion.toDouble() / total * 100)}% |")
-                appendLine("| `data class` | $usesDataClass / $total | ${"%.0f".format(usesDataClass.toDouble() / total * 100)}% |")
-                appendLine()
+                appendLine("| Idiom | Files Using It | Percentage | Status |")
+                appendLine("|-------|---------------|-----------|--------|")
+                appendLine("| More `val` than `var` declarations (immutability) | $valOverVar / $total | ${"%.0f".format(valOverVar.toDouble() / total * 100)}% | ${if (valOverVar.toDouble() / total < 0.5) "⚠️ POTENTIAL ISSUE" else "OK"} |")
+                appendLine("| `when` expressions (replaces switch/if-else) | $usesWhen / $total | ${"%.0f".format(usesWhen.toDouble() / total * 100)}% | ${if (usesWhen.toDouble() / total < 0.1) "⚠️ POTENTIAL ISSUE — low adoption" else "OK"} |")
+                appendLine("| Null-safety operators (`?.`, `?:`) | $usesNullSafe / $total | ${"%.0f".format(usesNullSafe.toDouble() / total * 100)}% | OK |")
+                appendLine("| String templates (`\${}`) | $usesTemplates / $total | ${"%.0f".format(usesTemplates.toDouble() / total * 100)}% | ${if (usesTemplates.toDouble() / total < 0.1) "⚠️ POTENTIAL ISSUE — low adoption" else "OK"} |")
+                appendLine("| `companion object` (for static members) | $usesCompanion / $total | ${"%.0f".format(usesCompanion.toDouble() / total * 100)}% | OK |")
+                appendLine("| `data class` (for value types) | $usesDataClass / $total | ${"%.0f".format(usesDataClass.toDouble() / total * 100)}% | ${if (usesDataClass.toDouble() / total < 0.05) "⚠️ POTENTIAL ISSUE — converter never promotes to data class" else "OK"} |")
                 appendLine()
             }
 
             // Quality metrics summary
             if (analysisResults.isNotEmpty()) {
                 appendLine("## Conversion Quality")
+                appendLine()
+                appendLine("Detects code patterns that indicate poor conversion quality. Each metric has an acceptable range — values outside that range are flagged as potential issues.")
                 appendLine()
                 val totalBangBang = analysisResults.sumOf { it.qualityMetrics.bangBangCount }
                 val avgLineRatio = analysisResults.map { it.qualityMetrics.lineRatio }.average()
@@ -155,15 +165,15 @@ object ReportGenerator {
                 val totalOpenClasses = analysisResults.sumOf { it.qualityMetrics.openClassCount }
                 val totalFiles = analysisResults.size
 
-                appendLine("| Metric | Count | Per File Avg | Notes |")
-                appendLine("|--------|-------|-------------|-------|")
-                appendLine("| `!!` non-null assertions | $totalBangBang | ${"%.1f".format(totalBangBang.toDouble() / totalFiles)} | Forced unwraps — indicates converter couldn't infer nullability safely |")
-                appendLine("| Avg line ratio (Kt/Java) | — | ${"%.2f".format(avgLineRatio)} | <1.0 means Kotlin is more concise, >1.0 means more verbose |")
-                appendLine("| `if-else is` chains | $totalInstanceofChains | ${"%.1f".format(totalInstanceofChains.toDouble() / totalFiles)} | Should be `when` expressions — unconverted Java pattern |")
-                appendLine("| String concatenation (`+`) | $totalStringConcats | ${"%.1f".format(totalStringConcats.toDouble() / totalFiles)} | Should use `\${}` templates — unconverted Java pattern |")
-                appendLine("| Explicit casts (`as`) | $totalExplicitCasts | ${"%.1f".format(totalExplicitCasts.toDouble() / totalFiles)} | Could be replaced by smart casts in idiomatic Kotlin |")
-                appendLine("| JVM interop annotations | $totalJvmAnnotations | ${"%.1f".format(totalJvmAnnotations.toDouble() / totalFiles)} | @JvmStatic, @JvmOverloads, @Throws — preserves Java caller compatibility |")
-                appendLine("| `open` classes | $totalOpenClasses | — | Classes marked open for inheritance (Kotlin is final by default) |")
+                appendLine("| Metric | Type | Value | Acceptable Range | Comments |")
+                appendLine("|--------|------|-------|-----------------|----------|")
+                appendLine("| `!!` non-null assertions | count | $totalBangBang | 0 | ${if (totalBangBang > 0) "⚠️ POTENTIAL ISSUE — converter used forced unwraps instead of safe handling" else "No issues"} |")
+                appendLine("| Line ratio (Kotlin / Java) | ratio | ${"%.2f".format(avgLineRatio)} | 0.7 – 1.0 | ${if (avgLineRatio > 1.1) "⚠️ POTENTIAL ISSUE — converted code is more verbose than original" else "Within range"} |")
+                appendLine("| `if-else is` chains | count | $totalInstanceofChains | 0 | ${if (totalInstanceofChains > 0) "⚠️ POTENTIAL ISSUE — should be `when` expressions" else "No issues"} |")
+                appendLine("| String concatenation (`+`) | count | $totalStringConcats | 0 | ${if (totalStringConcats > 0) "⚠️ POTENTIAL ISSUE — should use string templates" else "No issues"} |")
+                appendLine("| Explicit casts (`as`) | count | $totalExplicitCasts | 0 | ${if (totalExplicitCasts > 0) "⚠️ POTENTIAL ISSUE — could use smart casts instead" else "No issues"} |")
+                appendLine("| JVM interop annotations | count | $totalJvmAnnotations | >0 for libraries | ${if (totalJvmAnnotations == 0) "⚠️ POTENTIAL ISSUE — may break Java callers" else "Preserves Java interop"} |")
+                appendLine("| `open` classes | count | $totalOpenClasses | matches inheritable classes | Needed for classes with subclasses |")
                 appendLine()
             }
 
@@ -176,7 +186,20 @@ object ReportGenerator {
             // Hypotheses — evaluated against actual results
             appendLine("## Hypotheses Tested")
             appendLine()
+            appendLine("Each hypothesis was formulated before running the evaluation and tested against the actual results.")
+            appendLine()
             generateHypotheses(compilationResult, analysisResults, this)
+            appendLine()
+
+            // How to interpret
+            appendLine("## How to Interpret These Results")
+            appendLine()
+            appendLine("- **⚠️ POTENTIAL ISSUE** flags indicate areas where the converter produced suboptimal or incorrect output.")
+            appendLine("- **Compilation errors** from unresolved references are expected (missing dependencies) and do not indicate converter defects.")
+            appendLine("- **Compilation errors** from smart casts, type mismatches, or private access are real converter deficiencies.")
+            appendLine("- **Structural match** measures whether the converter preserved all classes, methods, and fields. Values below 90% warrant investigation.")
+            appendLine("- **Idiom usage** below 10% for `when` expressions or string templates suggests the converter produced Java-style code in Kotlin syntax.")
+            appendLine("- **`!!` assertions** are the strongest signal of poor conversion — each one is a potential NullPointerException at runtime.")
         }
     }
 
@@ -221,13 +244,13 @@ object ReportGenerator {
                 sb.appendLine("- **Unresolved references: $unresolvedCount errors** — caused by missing third-party dependencies (log4j, ASM, JUnit) not on the standalone compilation classpath. Not a converter defect.")
             }
             if (smartCastCount > 0) {
-                sb.appendLine("- **Smart cast failures: $smartCastCount errors** — a J2K converter deficiency. The converter translates Java fields as `var` (mutable) and removes explicit casts, relying on Kotlin's smart casts. However, smart casts don't work on `var` properties ([Kotlin docs](https://kotlinlang.org/docs/typecasts.html#smart-casts)). The converter should introduce local `val` copies (e.g., `val left = leftOperand`) before type checks, but it doesn't.")
+                sb.appendLine("- ⚠️ **POTENTIAL ISSUE — Smart cast failures: $smartCastCount errors** — a J2K converter deficiency. The converter translates Java fields as `var` (mutable) and removes explicit casts, relying on Kotlin's smart casts. However, smart casts don't work on `var` properties ([Kotlin docs](https://kotlinlang.org/docs/typecasts.html#smart-casts)). The converter should introduce local `val` copies (e.g., `val left = leftOperand`) before type checks, but it doesn't.")
             }
             if (typeMismatchCount > 0) {
-                sb.appendLine("- **Type mismatches: $typeMismatchCount errors** — a J2K converter deficiency. The converter inferred nullable types (`String?`) for generic collection elements where the original Java code used non-null values. For example, `List<String>` stream lambdas get parameter type `String?` instead of `String`, causing `startsWith(prefix)` to fail.")
+                sb.appendLine("- ⚠️ **POTENTIAL ISSUE — Type mismatches: $typeMismatchCount errors** — a J2K converter deficiency. The converter inferred nullable types (`String?`) for generic collection elements where the original Java code used non-null values. For example, `List<String>` stream lambdas get parameter type `String?` instead of `String`, causing `startsWith(prefix)` to fail.")
             }
             if (privateAccessCount > 0) {
-                sb.appendLine("- **Private access errors: $privateAccessCount errors** — a J2K converter deficiency. The converter transforms `package-info.java` (which contains only Javadoc and annotations in Java) into `package-info.kt` files with import statements that reference private inner classes. Kotlin has no `package-info` equivalent; these files should be converted to bare package declarations only.")
+                sb.appendLine("- ⚠️ **POTENTIAL ISSUE — Private access errors: $privateAccessCount errors** — a J2K converter deficiency. The converter transforms `package-info.java` (which contains only Javadoc and annotations in Java) into `package-info.kt` files with import statements that reference private inner classes. Kotlin has no `package-info` equivalent; these files should be converted to bare package declarations only.")
             }
         }
 
