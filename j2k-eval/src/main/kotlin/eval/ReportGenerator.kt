@@ -60,10 +60,15 @@ object ReportGenerator {
             if (compilationResult.errors.isNotEmpty()) {
                 appendLine("## Compilation Errors")
                 appendLine()
-                appendLine("The following errors occurred when compiling the converted Kotlin files:")
+                appendLine("Total compilation errors: **${compilationResult.errors.size}**")
+                appendLine()
+                appendLine("First 20 errors (see full artifact for complete list):")
                 appendLine()
                 appendLine("```")
-                compilationResult.errors.forEach { appendLine(it) }
+                compilationResult.errors.take(20).forEach { appendLine(it) }
+                if (compilationResult.errors.size > 20) {
+                    appendLine("... and ${compilationResult.errors.size - 20} more errors")
+                }
                 appendLine("```")
                 appendLine()
             }

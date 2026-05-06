@@ -56,7 +56,8 @@ jobs:
 
       - name: Run evaluation
         run: |
-          ./gradlew :j2k-eval:run --args="--source agent/src/main/java --converted j2k-eval/converted-kt-agent --output j2k-eval/output"
+          ./gradlew :j2k-eval:run --args="--source core/src/main/java --converted j2k-eval/converted-kt --output j2k-eval/output/core"
+          ./gradlew :j2k-eval:run --args="--source agent/src/main/java --converted j2k-eval/converted-kt-agent --output j2k-eval/output/agent"
 
       - name: Upload evaluation report
         uses: actions/upload-artifact@v4
@@ -69,6 +70,12 @@ jobs:
       - name: Post report to job summary
         if: always()
         run: |
-          if [ -f j2k-eval/output/evaluation-report.md ]; then
-            cat j2k-eval/output/evaluation-report.md >> $GITHUB_STEP_SUMMARY
+          if [ -f j2k-eval/output/core/evaluation-report.md ]; then
+            echo "# Core Module" >> $GITHUB_STEP_SUMMARY
+            cat j2k-eval/output/core/evaluation-report.md >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f j2k-eval/output/agent/evaluation-report.md ]; then
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "# Agent Module" >> $GITHUB_STEP_SUMMARY
+            cat j2k-eval/output/agent/evaluation-report.md >> $GITHUB_STEP_SUMMARY
           fi

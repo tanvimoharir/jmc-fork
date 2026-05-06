@@ -2,14 +2,12 @@
 
 ## Overview
 
-| Metric | Value |
-|--------|-------|
-| Target project | JMC (Java Model Checker) — core module |
-| Converter | IntelliJ IDEA static J2K (Kotlin 1.9.22) |
-| Total Java files | 146 |
-| Successfully converted | 146 (100%) |
-| Compilation errors (with stdlib) | 1,101 |
-| Avg structural match | 71.3% |
+| Metric | Core Module | Agent Module |
+|--------|-------------|--------------|
+| Total Java files | 146 | 24 |
+| Successfully converted | 146 (100%) | 24 (100%) |
+| Compilation errors (with stdlib) | 1,101 | 809 |
+| Avg structural match | 71.3% | 67.0% |
 
 ## Error Classification
 
@@ -37,7 +35,11 @@ This is a clear converter bug. Kotlin doesn't have `package-info` files — the 
 
 Affected files: every `package-info.kt` in the output (17 files, ~hundreds of errors).
 
-### 3. Smart cast failures on mutable properties (real converter limitation)
+### 3. Null safety type mismatch (real converter bug — agent module)
+
+In `JmcMatcher.kt`, the converter inferred `String?` where the code expects `String`. The converter was overly conservative about nullability, producing a type mismatch that wouldn't compile.
+
+### 4. Smart cast failures on mutable properties (real converter limitation)
 
 The converter translates Java fields as `var` (mutable). When the original Java code does:
 ```java
