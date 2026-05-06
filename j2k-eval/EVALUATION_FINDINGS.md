@@ -35,11 +35,15 @@ This is a clear converter bug. Kotlin doesn't have `package-info` files — the 
 
 Affected files: every `package-info.kt` in the output (17 files, ~hundreds of errors).
 
-### 3. Null safety type mismatch (real converter bug — agent module)
+### 3. Null safety type mismatch (converter deficiency — agent module)
 
-In `JmcMatcher.kt`, the converter inferred `String?` where the code expects `String`. The converter was overly conservative about nullability, producing a type mismatch that wouldn't compile.
+In `JmcMatcher.kt`, the converter inferred `String?` for a lambda parameter from a `List<String>.stream()` call where the elements are non-null. The original Java code uses `List<String>` (non-null elements), but the converter produces `{ prefix: String? -> ... }` causing `startsWith(prefix)` to fail with a type mismatch. The converter should infer non-null element types from the generic type of the collection.
 
-### 4. Smart cast failures on mutable properties (real converter limitation)
+### 4. Compiler OutOfMemoryError (core module — 146 files)
+
+When compiling all 146 converted core module files together, `kotlinc` runs out of heap space (`java.lang.OutOfMemoryError: Java heap space`). This means the compilation error count for the core module is unreliable — the compiler crashed before finishing analysis. The agent module (24 files) compiles without OOM. Mitigation: increase heap with `-J-Xmx2g` or compile in smaller batches.
+
+### 5. Smart cast failures on mutable properties (converter deficiency)
 
 The converter translates Java fields as `var` (mutable). When the original Java code does:
 ```java

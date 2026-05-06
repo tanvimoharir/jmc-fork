@@ -44,76 +44,101 @@ object ReportGenerator {
             appendLine("| Avg structural match | ${"%.1f".format(avgStructuralMatch * 100)}% |")
             appendLine()
 
-            // Per-file conversion results
-            appendLine("## Conversion Results")
-            appendLine()
-            appendLine("| File | Status | Error |")
-            appendLine("|------|--------|-------|")
-            conversionResults.forEach { result ->
-                val status = if (result.success) "✅" else "❌"
-                val error = result.error ?: ""
-                appendLine("| ${result.sourceFile.name} | $status | $error |")
+            // Per-file results — only show failures
+            val failures = conversionResults.filter { !it.success }
+            if (failures.isNotEmpty()) {
+                appendLine("## Conversion Failures")
+                appendLine()
+                appendLine("| File | Error |")
+                appendLine("|------|-------|")
+                failures.forEach { result ->
+                    appendLine("| ${result.sourceFile.name} | ${result.error ?: ""} |")
+                }
+                appendLine()
             }
-            appendLine()
 
             // Compilation errors
             if (compilationResult.errors.isNotEmpty()) {
                 appendLine("## Compilation Errors")
                 appendLine()
-                appendLine("Total compilation errors: **${compilationResult.errors.size}**")
-                appendLine()
-                appendLine("First 20 errors (see full artifact for complete list):")
-                appendLine()
-                appendLine("```")
-                compilationResult.errors.take(20).forEach { appendLine(it) }
-                if (compilationResult.errors.size > 20) {
-                    appendLine("... and ${compilationResult.errors.size - 20} more errors")
+
+                // Check for OOM
+                val hasOom = compilationResult.errors.any { "OutOfMemoryError" in it }
+                if (hasOom) {
+                    appendLine("⚠️ **Compiler ran out of memory** — results may be incomplete. Consider compiling in smaller batches.")
+                    appendLine()
                 }
-                appendLine("```")
+
+                val realErrors = compilationResult.errors.filter { "OutOfMemoryError" !in it && "Caused by:" !in it }
+                appendLine("Total compilation errors: **${realErrors.size}**${if (hasOom) " (OOM — may be incomplete)" else ""}")
+                appendLine()
+                if (realErrors.isNotEmpty()) {
+                    appendLine("First 20 errors:")
+                    appendLine()
+                    appendLine("```")
+                    realErrors.take(20).forEach { appendLine(it) }
+                    if (realErrors.size > 20) {
+                        appendLine("... and ${realErrors.size - 20} more errors")
+                    }
+                    appendLine("```")
+                }
                 appendLine()
             }
 
-            // Structural analysis
+            // Structural analysis — aggregate summary
             if (analysisResults.isNotEmpty()) {
                 appendLine("## Structural Analysis")
                 appendLine()
-                appendLine("Comparison of structural elements between original Java and converted Kotlin:")
-                appendLine()
-                appendLine("| File | Java Classes | Kt Classes | Java Methods | Kt Methods | Java Fields | Kt Fields | Match |")
-                appendLine("|------|-------------|------------|-------------|------------|------------|----------|-------|")
-                analysisResults.forEach { result ->
-                    appendLine(
-                        "| ${result.fileName} " +
-                        "| ${result.javaMetrics.classCount} " +
-                        "| ${result.kotlinMetrics.classCount} " +
-                        "| ${result.javaMetrics.methodCount} " +
-                        "| ${result.kotlinMetrics.methodCount} " +
-                        "| ${result.javaMetrics.fieldCount} " +
-                        "| ${result.kotlinMetrics.fieldCount} " +
-                        "| ${"%.0f".format(result.structuralMatch * 100)}% |"
-                    )
-                }
+                val totalJavaClasses = analysisResults.sumOf { it.javaMetrics.classCount }
+                val totalKtClasses = analysisResults.sumOf { it.kotlinMetrics.classCount }
+                val totalJavaMethods = analysisResults.sumOf { it.javaMetrics.methodCount }
+                val totalKtMethods = analysisResults.sumOf { it.kotlinMetrics.methodCount }
+                val totalJavaFields = analysisResults.sumOf { it.javaMetrics.fieldCount }
+                val totalKtFields = analysisResults.sumOf { it.kotlinMetrics.fieldCount }
+
+                appendLine("| Element | Java (original) | Kotlin (converted) | Preservation |")
+                appendLine("|---------|----------------|-------------------|-------------|")
+                appendLine("| Classes | $totalJavaClasses | $totalKtClasses | ${if (totalJavaClasses > 0) "${"%.0f".format(minOf(totalKtClasses.toDouble() / totalJavaClasses, 1.0) * 100)}%" else "N/A"} |")
+                appendLine("| Methods | $totalJavaMethods | $totalKtMethods | ${if (totalJavaMethods > 0) "${"%.0f".format(minOf(totalKtMethods.toDouble() / totalJavaMethods, 1.0) * 100)}%" else "N/A"} |")
+                appendLine("| Fields | $totalJavaFields | $totalKtFields | ${if (totalJavaFields > 0) "${"%.0f".format(minOf(totalKtFields.toDouble() / totalJavaFields, 1.0) * 100)}%" else "N/A"} |")
                 appendLine()
 
-                // Kotlin idiom usage
+                // Show only worst-performing files
+                val worstFiles = analysisResults
+                    .filter { it.structuralMatch < 1.0 }
+                    .sortedBy { it.structuralMatch }
+                    .take(5)
+                if (worstFiles.isNotEmpty()) {
+                    appendLine("**Lowest structural match files** (potential conversion issues):")
+                    appendLine()
+                    appendLine("| File | Match | Java (classes/methods/fields) | Kotlin (classes/methods/fields) |")
+                    appendLine("|------|-------|------------------------------|-------------------------------|")
+                    worstFiles.forEach { r ->
+                        appendLine("| ${r.fileName} | ${"%.0f".format(r.structuralMatch * 100)}% | ${r.javaMetrics.classCount}/${r.javaMetrics.methodCount}/${r.javaMetrics.fieldCount} | ${r.kotlinMetrics.classCount}/${r.kotlinMetrics.methodCount}/${r.kotlinMetrics.fieldCount} |")
+                    }
+                    appendLine()
+                }
+
+                // Kotlin idiom usage — aggregate summary
                 appendLine("## Kotlin Idiom Usage")
                 appendLine()
-                appendLine("How idiomatic is the converted Kotlin code?")
+                val total = analysisResults.size
+                val valOverVar = analysisResults.count { it.idiomMetrics.usesValOverVar }
+                val usesWhen = analysisResults.count { it.idiomMetrics.usesWhenExpression }
+                val usesNullSafe = analysisResults.count { it.idiomMetrics.usesNullSafety }
+                val usesTemplates = analysisResults.count { it.idiomMetrics.usesStringTemplates }
+                val usesCompanion = analysisResults.count { it.idiomMetrics.usesCompanionObject }
+                val usesDataClass = analysisResults.count { it.idiomMetrics.usesDataClass }
+
+                appendLine("| Idiom | Files Using It | Percentage |")
+                appendLine("|-------|---------------|-----------|")
+                appendLine("| Prefers `val` over `var` | $valOverVar / $total | ${"%.0f".format(valOverVar.toDouble() / total * 100)}% |")
+                appendLine("| `when` expressions | $usesWhen / $total | ${"%.0f".format(usesWhen.toDouble() / total * 100)}% |")
+                appendLine("| Null-safety operators (`?.`, `?:`) | $usesNullSafe / $total | ${"%.0f".format(usesNullSafe.toDouble() / total * 100)}% |")
+                appendLine("| String templates (`\${}`) | $usesTemplates / $total | ${"%.0f".format(usesTemplates.toDouble() / total * 100)}% |")
+                appendLine("| `companion object` | $usesCompanion / $total | ${"%.0f".format(usesCompanion.toDouble() / total * 100)}% |")
+                appendLine("| `data class` | $usesDataClass / $total | ${"%.0f".format(usesDataClass.toDouble() / total * 100)}% |")
                 appendLine()
-                appendLine("| File | data class | val>var | when | null-safe | templates | companion |")
-                appendLine("|------|-----------|---------|------|-----------|-----------|-----------|")
-                analysisResults.forEach { result ->
-                    val i = result.idiomMetrics
-                    appendLine(
-                        "| ${result.fileName} " +
-                        "| ${bool(i.usesDataClass)} " +
-                        "| ${bool(i.usesValOverVar)} " +
-                        "| ${bool(i.usesWhenExpression)} " +
-                        "| ${bool(i.usesNullSafety)} " +
-                        "| ${bool(i.usesStringTemplates)} " +
-                        "| ${bool(i.usesCompanionObject)} |"
-                    )
-                }
                 appendLine()
             }
 
@@ -128,16 +153,17 @@ object ReportGenerator {
                 val totalExplicitCasts = analysisResults.sumOf { it.qualityMetrics.explicitCastCount }
                 val totalJvmAnnotations = analysisResults.sumOf { it.qualityMetrics.jvmAnnotationCount }
                 val totalOpenClasses = analysisResults.sumOf { it.qualityMetrics.openClassCount }
+                val totalFiles = analysisResults.size
 
-                appendLine("| Metric | Value | Interpretation |")
-                appendLine("|--------|-------|----------------|")
-                appendLine("| `!!` (non-null assertions) | $totalBangBang | ${if (totalBangBang == 0) "Good — no forced unwraps" else "Code smell — converter couldn't infer nullability"} |")
-                appendLine("| Line ratio (Kt/Java) | ${"%.2f".format(avgLineRatio)} | ${if (avgLineRatio < 1.0) "Good — Kotlin is more concise" else if (avgLineRatio < 1.1) "Neutral — similar verbosity" else "Verbose — converter didn't leverage Kotlin conciseness"} |")
-                appendLine("| `if-else instanceof` chains | $totalInstanceofChains | ${if (totalInstanceofChains == 0) "Good — all converted to `when`" else "Unconverted — should be `when` expressions"} |")
-                appendLine("| String concatenation (`+`) | $totalStringConcats | ${if (totalStringConcats == 0) "Good — uses string templates" else "Unconverted — should use `\\\${}` templates"} |")
-                appendLine("| Explicit casts (`as`) | $totalExplicitCasts | ${if (totalExplicitCasts < 5) "Low — good smart cast usage" else "High — converter retained explicit casts"} |")
-                appendLine("| JVM interop annotations | $totalJvmAnnotations | ${if (totalJvmAnnotations > 0) "Good — preserves Java interop" else "None — may break Java callers"} |")
-                appendLine("| `open` classes | $totalOpenClasses | ${if (totalOpenClasses > 0) "Correct — needed for inheritance" else "All final — may break subclassing"} |")
+                appendLine("| Metric | Count | Per File Avg | Notes |")
+                appendLine("|--------|-------|-------------|-------|")
+                appendLine("| `!!` non-null assertions | $totalBangBang | ${"%.1f".format(totalBangBang.toDouble() / totalFiles)} | Forced unwraps — indicates converter couldn't infer nullability safely |")
+                appendLine("| Avg line ratio (Kt/Java) | — | ${"%.2f".format(avgLineRatio)} | <1.0 means Kotlin is more concise, >1.0 means more verbose |")
+                appendLine("| `if-else is` chains | $totalInstanceofChains | ${"%.1f".format(totalInstanceofChains.toDouble() / totalFiles)} | Should be `when` expressions — unconverted Java pattern |")
+                appendLine("| String concatenation (`+`) | $totalStringConcats | ${"%.1f".format(totalStringConcats.toDouble() / totalFiles)} | Should use `\${}` templates — unconverted Java pattern |")
+                appendLine("| Explicit casts (`as`) | $totalExplicitCasts | ${"%.1f".format(totalExplicitCasts.toDouble() / totalFiles)} | Could be replaced by smart casts in idiomatic Kotlin |")
+                appendLine("| JVM interop annotations | $totalJvmAnnotations | ${"%.1f".format(totalJvmAnnotations.toDouble() / totalFiles)} | @JvmStatic, @JvmOverloads, @Throws — preserves Java caller compatibility |")
+                appendLine("| `open` classes | $totalOpenClasses | — | Classes marked open for inheritance (Kotlin is final by default) |")
                 appendLine()
             }
 
@@ -168,6 +194,11 @@ object ReportGenerator {
 
         // Compilation error analysis
         if (compilationResult.errors.isNotEmpty()) {
+            val hasOom = compilationResult.errors.any { "OutOfMemoryError" in it }
+            if (hasOom) {
+                sb.appendLine("- **⚠️ Compiler OOM** — `kotlinc` ran out of memory compiling all files together. Error counts below may be incomplete.")
+            }
+
             val errorsByType = compilationResult.errors
                 .mapNotNull { line ->
                     when {
