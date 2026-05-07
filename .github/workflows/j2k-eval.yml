@@ -80,3 +80,8 @@ jobs:
             echo "# Agent Module" >> $GITHUB_STEP_SUMMARY
             cat j2k-eval/output/agent/evaluation-report.md >> $GITHUB_STEP_SUMMARY
           fi
+          if [ -f j2k-eval/output/edge-cases/evaluation-report.md ]; then
+            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "# Edge Cases" >> $GITHUB_STEP_SUMMARY
+            cat j2k-eval/output/edge-cases/evaluation-report.md >> $GITHUB_STEP_SUMMARY
+          fi

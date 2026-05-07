@@ -139,14 +139,14 @@ object ReportGenerator {
                 val usesCompanion = analysisResults.count { it.idiomMetrics.usesCompanionObject }
                 val usesDataClass = analysisResults.count { it.idiomMetrics.usesDataClass }
 
-                appendLine("| Idiom | Files Using It | Percentage | Status |")
-                appendLine("|-------|---------------|-----------|--------|")
-                appendLine("| More `val` than `var` declarations (immutability) | $valOverVar / $total | ${"%.0f".format(valOverVar.toDouble() / total * 100)}% | ${if (valOverVar.toDouble() / total < 0.5) "⚠️ POTENTIAL ISSUE" else "OK"} |")
-                appendLine("| `when` expressions (replaces switch/if-else) | $usesWhen / $total | ${"%.0f".format(usesWhen.toDouble() / total * 100)}% | ${if (usesWhen.toDouble() / total < 0.1) "⚠️ POTENTIAL ISSUE — low adoption" else "OK"} |")
-                appendLine("| Null-safety operators (`?.`, `?:`) | $usesNullSafe / $total | ${"%.0f".format(usesNullSafe.toDouble() / total * 100)}% | OK |")
-                appendLine("| String templates (`\${}`) | $usesTemplates / $total | ${"%.0f".format(usesTemplates.toDouble() / total * 100)}% | ${if (usesTemplates.toDouble() / total < 0.1) "⚠️ POTENTIAL ISSUE — low adoption" else "OK"} |")
-                appendLine("| `companion object` (for static members) | $usesCompanion / $total | ${"%.0f".format(usesCompanion.toDouble() / total * 100)}% | OK |")
-                appendLine("| `data class` (for value types) | $usesDataClass / $total | ${"%.0f".format(usesDataClass.toDouble() / total * 100)}% | ${if (usesDataClass.toDouble() / total < 0.05) "⚠️ POTENTIAL ISSUE — converter never promotes to data class" else "OK"} |")
+                appendLine("| Idiom | Files Using It | Percentage |")
+                appendLine("|-------|---------------|-----------|")
+                appendLine("| More `val` than `var` declarations (immutability) | $valOverVar / $total | ${"%.0f".format(valOverVar.toDouble() / total * 100)}% |")
+                appendLine("| `when` expressions (replaces switch/if-else) | $usesWhen / $total | ${"%.0f".format(usesWhen.toDouble() / total * 100)}% |")
+                appendLine("| Null-safety operators (`?.`, `?:`) | $usesNullSafe / $total | ${"%.0f".format(usesNullSafe.toDouble() / total * 100)}% |")
+                appendLine("| String templates (`\${}`) | $usesTemplates / $total | ${"%.0f".format(usesTemplates.toDouble() / total * 100)}% |")
+                appendLine("| `companion object` (for static members) | $usesCompanion / $total | ${"%.0f".format(usesCompanion.toDouble() / total * 100)}% |")
+                appendLine("| `data class` (for value types) | $usesDataClass / $total | ${"%.0f".format(usesDataClass.toDouble() / total * 100)}% |")
                 appendLine()
             }
 
