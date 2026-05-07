@@ -58,6 +58,7 @@ jobs:
         run: |
           ./gradlew :j2k-eval:run --args="--source core/src/main/java --converted j2k-eval/converted-kt --output j2k-eval/output/core"
           ./gradlew :j2k-eval:run --args="--source agent/src/main/java --converted j2k-eval/converted-kt-agent --output j2k-eval/output/agent"
+          ./gradlew :j2k-eval:run --args="--source j2k-eval/edge-cases/src --converted j2k-eval/edge-cases/converted --output j2k-eval/output/edge-cases"
 
       - name: Upload evaluation report
         uses: actions/upload-artifact@v4

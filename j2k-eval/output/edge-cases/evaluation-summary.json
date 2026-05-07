@@ -1,0 +1,34 @@
+{
+  "totalFiles": 6,
+  "successfulConversions": 6,
+  "failedConversions": 0,
+  "compilationSuccess": false,
+  "compilationErrorCount": 20,
+  "averageStructuralMatch": 0.7041997354497355,
+  "files": [
+    {
+      "file": "ComplexGenerics.java",
+      "converted": true
+    },
+    {
+      "file": "EnumWithBehavior.java",
+      "converted": true
+    },
+    {
+      "file": "MutableFieldInstanceof.java",
+      "converted": true
+    },
+    {
+      "file": "NestedAnonymousClasses.java",
+      "converted": true
+    },
+    {
+      "file": "StreamsAndLambdas.java",
+      "converted": true
+    },
+    {
+      "file": "SynchronizedPatterns.java",
+      "converted": true
+    }
+  ]
+}

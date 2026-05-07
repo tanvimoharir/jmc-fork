@@ -1,70 +1,165 @@
 # J2K Evaluation Pipeline
 
-Evaluates the static Java-to-Kotlin (J2K) converter against the JMC (Java Model Checker) core module.
+Evaluates the static Java-to-Kotlin (J2K) converter against the [JMC (Java Model Checker)](https://github.com/mpi-sws-rse/jmc) project — a real-world open-source Java project focused on concurrency verification.
 
-## What This Does
+## What This Pipeline Does
 
-1. **Converts** all Java source files in `core/src/main/java/` to Kotlin using the Kotlin compiler's built-in J2K translator
-2. **Compiles** the converted Kotlin files to check for validity
-3. **Analyzes** structural fidelity (class/method/field counts) between original Java and converted Kotlin
-4. **Measures** idiomatic Kotlin usage (data classes, val vs var, null safety, etc.)
-5. **Generates** a Markdown report and JSON summary
+1. **Converts** Java source files to Kotlin using IntelliJ IDEA's built-in static J2K converter
+2. **Compiles** the converted Kotlin files to check for syntactic/semantic validity
+3. **Analyzes** structural fidelity — are all classes, methods, and fields preserved?
+4. **Measures** idiomatic Kotlin usage — does the output use Kotlin features or is it Java-in-Kotlin-syntax?
+5. **Detects** conversion quality issues — `!!` assertions, unconverted patterns, explicit casts
+6. **Generates** a Markdown report with findings, flagging potential issues with ⚠️ POTENTIAL ISSUE
 
-## Running Locally
+## Modules Evaluated
 
-### Prerequisites
+| Module | Files | Description |
+|--------|-------|-------------|
+| `core` | 146 Java files | Model checker runtime, strategies, solver, annotations |
+| `agent` | 24 Java files | Bytecode instrumentation using ASM visitors |
+
+## Running the Pipeline
+
+### Via GitHub Actions (automatic)
+
+Push to `main` or `j2k-eval` branch, or trigger manually from the Actions tab.
+
+The workflow:
+1. Checks out the repository
+2. Installs JDK 17 and Kotlin compiler
+3. Runs the evaluation against pre-converted Kotlin files
+4. Uploads the report as a downloadable artifact
+5. Posts the report to the GitHub Actions job summary
+
+### Locally
+
+**Prerequisites:**
 - JDK 17+
-- Kotlin compiler (`kotlinc`) on your PATH — [install guide](https://kotlinlang.org/docs/command-line.html)
+- IntelliJ IDEA (any edition) with Kotlin plugin enabled
+- `kotlinc` on PATH ([install guide](https://kotlinlang.org/docs/command-line.html)) — needed for compilation check
 
-### Run the pipeline
-
+**Step 1: Clone the repository**
 ```bash
-# From the repository root:
-./gradlew :j2k-eval:run --args="--source core/src/main/java --output j2k-eval/output"
+git clone https://github.com/tanvimoharir/jmc-fork.git
+cd jmc-fork
 ```
 
-### View the report
+**Step 2: Run the J2K conversion** (if you want to regenerate converted files)
 
-The report is written to `j2k-eval/output/evaluation-report.md`.
+The conversion requires IntelliJ IDEA because the J2K converter is not available as a standalone CLI tool. The process is:
+1. Copy the target Java files into a Gradle source root (so IntelliJ recognizes them)
+2. Convert them using IntelliJ's "Convert Java File to Kotlin File" action
+3. Copy the resulting `.kt` files to the evaluation directory
+4. Revert the source directory back to Java
 
-## Running via GitHub Actions
+Example for the core module:
+1. Open the project in IntelliJ IDEA
+2. Wait for Gradle sync to complete
+3. Right-click on `core/src/main/java/org/mpi_sws/jmc` in the Project view
+4. Select Code → Convert Java File to Kotlin File (or Cmd+Shift+Alt+K)
+5. Click OK on the configuration dialog, then Yes to correct references
+6. Copy the converted `.kt` files:
+   ```bash
+   mkdir -p j2k-eval/converted-kt
+   find core/src/main/java -name "*.kt" | while read f; do
+     dest="j2k-eval/converted-kt/${f#core/src/main/java/}"
+     mkdir -p "$(dirname "$dest")"
+     cp "$f" "$dest"
+   done
+   ```
+7. Revert core back to Java: `git checkout -- core/`
 
-The pipeline runs automatically on push to `main` or `j2k-eval` branches. You can also trigger it manually:
+For custom edge-case files (not in a Gradle source root), copy them into a module's source directory first:
+```bash
+cp j2k-eval/edge-cases/src/*.java core/src/main/java/edgecases/
+# Convert in IntelliJ, then:
+mkdir -p j2k-eval/edge-cases/converted
+cp core/src/main/java/edgecases/*.kt j2k-eval/edge-cases/converted/
+rm -rf core/src/main/java/edgecases
+```
 
-1. Go to the **Actions** tab in the GitHub repository
-2. Select **J2K Evaluation Pipeline**
-3. Click **Run workflow**
-4. Download the report artifact after the run completes
+**Step 3: Run the evaluation**
+
+The evaluation compares the original Java source files against the converted Kotlin files:
+```bash
+# Evaluate core module
+./gradlew :j2k-eval:run --args="--source core/src/main/java --converted j2k-eval/converted-kt --output j2k-eval/output/core"
+
+# Evaluate agent module
+./gradlew :j2k-eval:run --args="--source agent/src/main/java --converted j2k-eval/converted-kt-agent --output j2k-eval/output/agent"
+
+# Evaluate edge cases
+./gradlew :j2k-eval:run --args="--source j2k-eval/edge-cases/src --converted j2k-eval/edge-cases/converted --output j2k-eval/output/edge-cases"
+```
+
+The `--source` flag points to the original Java files, `--converted` points to the J2K-converted Kotlin files, and `--output` is where the report gets written.
+
+**Step 4: View the report**
+
+Reports are written as Markdown:
+- `j2k-eval/output/core/evaluation-report.md`
+- `j2k-eval/output/agent/evaluation-report.md`
+- `j2k-eval/output/edge-cases/evaluation-report.md`
+
+## How the Conversion Works
+
+The J2K conversion is performed using **IntelliJ IDEA's "Convert Java File to Kotlin File" action** (Code → Convert Java File to Kotlin File). The converted `.kt` files are committed to the repository and the CI pipeline runs the evaluation against them.
+
+### Why Not Headless IntelliJ in CI?
+
+We investigated running IntelliJ's J2K converter headlessly in GitHub Actions via a custom `ApplicationStarter` plugin. This approach failed due to:
+
+- **Internal API instability** — The J2K converter API (`J2kConverterExtension`, `NewJavaToKotlinConverter`) is internal to the Kotlin IntelliJ plugin and changes between versions without documentation
+- **Version mismatch** — The Gradle IntelliJ Plugin (1.x) couldn't resolve the bundled Kotlin plugin for IntelliJ 2024.x, and the newer Platform Plugin (2.x) required Gradle 8.5+
+- **No standalone CLI** — Unlike `kotlinc` or `format.sh`, IntelliJ does not expose J2K as a command-line tool
+- **Metadata incompatibility** — Local IntelliJ (2024.3, Kotlin metadata 2.1.0) couldn't be used to verify plugin code targeting CI's IntelliJ (2023.3, Kotlin metadata 1.9.0)
+
+The pre-committed approach is the pragmatic solution: the conversion is done once locally using the full IDE, and CI runs the evaluation logic (which is written entirely in Kotlin).
 
 ## Project Structure
 
 ```
 j2k-eval/
-├── build.gradle.kts              # Module build config
-├── README.md                     # This file
+├── README.md                          # This file
+├── EVALUATION_FINDINGS.md             # Detailed analysis of findings
+├── build.gradle.kts                   # Evaluation module build config
+├── converted-kt/                      # Core module converted Kotlin files (146 files)
+├── converted-kt-agent/                # Agent module converted Kotlin files (24 files)
+├── edge-cases/                        # Custom stress-test dataset
+│   ├── README.md
+│   ├── src/                           # Java edge-case files
+│   └── proposed-fix/                  # Proposed fix for smart cast issue
+├── scripts/
+│   └── run-j2k.sh                     # CI conversion script
 └── src/main/kotlin/eval/
-    ├── Main.kt                   # CLI entry point & orchestration
-    ├── J2KConverter.kt           # Wraps the Kotlin J2K translator API
-    ├── KotlinCompiler.kt         # Compiles converted .kt files via kotlinc subprocess
-    ├── StructuralAnalyzer.kt     # Compares Java/Kotlin structural metrics
-    └── ReportGenerator.kt        # Produces Markdown + JSON reports
+    ├── Main.kt                        # CLI entry point
+    ├── ConversionResult.kt            # Data class for conversion results
+    ├── KotlinCompiler.kt              # Compilation check via kotlinc
+    ├── StructuralAnalyzer.kt          # Structural + quality analysis
+    └── ReportGenerator.kt             # Markdown + JSON report generation
 ```
 
-## Evaluation Metrics
+## Key Findings
 
-| Metric | Description |
-|--------|-------------|
-| Conversion rate | % of Java files successfully converted to Kotlin |
-| Compilation success | Whether the converted Kotlin files compile |
-| Structural match | How well class/method/field counts are preserved |
-| Idiom usage | Whether the output uses idiomatic Kotlin patterns |
+| Finding | Type | Impact |
+|---------|------|--------|
+| Smart cast failures on `var` properties | Converter deficiency | 65 errors in core module |
+| `package-info.java` produces invalid Kotlin | Converter deficiency | References private inner classes |
+| Nullable type inference for collection elements | Converter deficiency | Type mismatches in agent module |
+| Builder patterns not converted to idiomatic Kotlin | Low idiom adoption | Verbose but functional |
+| `data class` never used | Low idiom adoption | Converter never promotes classes |
+| 381 `!!` assertions in core module | Code quality | Potential NPEs at runtime |
 
-## Why JMC?
+## Edge Cases
 
-JMC (Java Model Checker) is a good stress-test for J2K because it uses:
-- **Concurrency primitives** — custom Thread/Lock subclasses
-- **Builder patterns** — `JmcCheckerConfiguration.Builder`
-- **Lambda-heavy code** — functional test targets
-- **Bytecode instrumentation** — Java agent code
-- **Annotations** — custom JMC annotations
-- **Generics** — complex type parameters in the solver module
+See [`edge-cases/README.md`](edge-cases/README.md) for a custom dataset of tricky Java patterns designed to stress-test the converter, including:
+- Nested anonymous classes
+- Complex generics with wildcards
+- Mutable field instanceof (confirmed failure)
+- Synchronization patterns
+- Streams and lambdas
+- Enums with abstract methods
+
+## Proposed Fix
+
+See [`edge-cases/proposed-fix/SmartCastFix.md`](edge-cases/proposed-fix/SmartCastFix.md) for a detailed fix proposal that would resolve 65 compilation errors by introducing local `val` copies before `instanceof` chains on mutable fields.
