@@ -2,6 +2,7 @@ package org.mpi_sws.jmc.runtime.scheduling;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mpi_sws.jmc.solver.SolverResult;
 
 /**
  * Represents a scheduling choice in the JMC runtime.
@@ -13,11 +14,23 @@ import org.apache.logging.log4j.Logger;
  * @param <T> the type of value associated with the scheduling choice
  */
 public class SchedulingChoice<T extends SchedulingChoiceValue> {
+    /** Logger for this class. */
     private static Logger LOGGER = LogManager.getLogger(SchedulingChoice.class);
+
+    /**
+     * The ID of the task to act on, or {@code null} for an end-of-schedule or block-execution
+     * choice.
+     */
     private Long taskId;
+
+    /** Whether this choice blocks the task identified by {@link #taskId}. */
     private boolean isBlockTask;
+
+    /** Whether this choice stops the entire execution. */
     private boolean isBlockExecution;
-    private final T value;
+
+    /** Optional value delivered to the task when it is resumed (may be {@code null}). */
+    private T value;
 
     /**
      * Constructs a new SchedulingChoice object.
@@ -65,6 +78,15 @@ public class SchedulingChoice<T extends SchedulingChoiceValue> {
     }
 
     /**
+     * Set the value associated with this scheduling choice.
+     *
+     * @param value the value to set
+     */
+    public void setValue(Object value) {
+        this.value = (T) value;
+    }
+
+    /**
      * Checks if this scheduling choice is a blocking task.
      *
      * @return true if it is a blocking task, false otherwise
@@ -89,6 +111,20 @@ public class SchedulingChoice<T extends SchedulingChoiceValue> {
      */
     public boolean isBlockExecution() {
         return isBlockExecution;
+    }
+
+    /**
+     * Checks if this scheduling choice is a symbolic operation
+     *
+     * @return true if it has solverResult object as it's value
+     */
+    public boolean isSymbolic() {
+        if (value instanceof ObjectValue objectValue) {
+            if (objectValue.asObject() instanceof SolverResult) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -145,6 +181,11 @@ public class SchedulingChoice<T extends SchedulingChoiceValue> {
         return new SchedulingChoice<>(null, false, false);
     }
 
+    /**
+     * Returns a human-readable representation of this choice (task ID and the two block flags).
+     *
+     * @return a string representation of this scheduling choice
+     */
     @Override
     public String toString() {
         return "SchedulingChoice{"

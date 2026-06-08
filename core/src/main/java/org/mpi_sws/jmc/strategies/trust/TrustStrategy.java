@@ -91,6 +91,10 @@ public class TrustStrategy extends TrackActiveTasksStrategy
         if (recordedTrace != null) {
             // If we have a recorded trace, return the next task from it
             SchedulingChoice<?> next = recordedTrace.remove(0);
+            // Update it's value based on value tracker in the algo
+            if (next != null) {
+                algoInstance.updateExternalValue(next);
+            }
             LOGGER.debug("Returning recorded task: {}", next);
             if (next.isEnd()) {
                 // If we are at the end event only the main thread (1) needs to be active and
@@ -110,7 +114,7 @@ public class TrustStrategy extends TrackActiveTasksStrategy
             return next;
         }
 
-        // Always add 1 to the return value the strategy expects 1-indexed tasks but we store
+        // Always add 1 to the return value the strategy expects 1-indexed tasks, but we store
         // 0-indexed tasks
 
         // Otherwise, return an active, schedule-able task based on the policy
@@ -119,8 +123,11 @@ public class TrustStrategy extends TrackActiveTasksStrategy
         SchedulingChoice<?> nextTask = algoInstance.nextTask();
         if (nextTask != null) {
             if (!activeTasks.contains(nextTask.getTaskId())) {
-                LOGGER.debug("Guiding trace led us to a task that is not active: {}", nextTask);
+                LOGGER.debug("Guiding trace led us to a task={} that is not" +
+                        " in active={}", nextTask, activeTasks);
             }
+            // Update it's value based on value tracker in the algo
+            algoInstance.updateExternalValue(nextTask);
             return nextTask;
         }
 
@@ -132,7 +139,7 @@ public class TrustStrategy extends TrackActiveTasksStrategy
                         .toList();
 
         // If the policy is FIFO, return the first active, schedule-able task
-        return SchedulingChoice.task(
+        SchedulingChoice<?> next = SchedulingChoice.task(
                 switch (policy) {
                     case FIFO -> activeScheduleAbleTasks.isEmpty()
                             ? null
@@ -145,6 +152,12 @@ public class TrustStrategy extends TrackActiveTasksStrategy
                         yield size == 0 ? null : activeScheduleAbleTasks.get(random.nextInt(size));
                     }
                 });
+
+        // Update it's value based on value tracker in the algo
+        if (next != null) {
+            algoInstance.updateExternalValue(next);
+        }
+        return next;
     }
 
     @Override
