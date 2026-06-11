@@ -3,6 +3,7 @@ plugins {
     id("checkstyle")
     id("com.gradleup.shadow") version "9.0.0-beta9"
     id("maven-publish")
+    kotlin("jvm")
 }
 
 repositories {
@@ -24,6 +25,7 @@ dependencies {
     implementation("com.google.guava:guava:32.1.2-jre")
     testImplementation("org.junit.jupiter:junit-jupiter:5.7.1")
     implementation("org.junit.jupiter:junit-jupiter:5.7.1")
+    implementation(kotlin("stdlib-jdk8"))
 }
 
 tasks.test {
@@ -36,4 +38,7 @@ tasks.test {
     val agentArg =
         "-javaagent:$agentJar=debug,instrumentingPackages=org.mpi_sws.jmc.test,jmcRuntimeJarPath=$jmcRuntimeJar"
     jvmArgs(agentArg)
+}
+kotlin {
+    jvmToolchain(17)
 }

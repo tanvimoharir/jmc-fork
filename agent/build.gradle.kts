@@ -7,6 +7,7 @@ plugins {
     id("com.gradleup.shadow") version "9.0.0-beta9"
     id("java-library")
 //    signing
+    kotlin("jvm")
 }
 
 repositories {
@@ -39,6 +40,7 @@ dependencies {
     implementation("org.junit.platform:junit-platform-engine:1.11.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.junit.jupiter:junit-jupiter:5.7.1")
+    implementation(kotlin("stdlib-jdk8"))
 }
 
 tasks.register("agentJar", ShadowJar::class) {
@@ -125,3 +127,6 @@ publishing {
 //signing {
 //    sign(publishing.publications["maven"])
 //}
+kotlin {
+    jvmToolchain(17)
+}

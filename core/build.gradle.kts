@@ -4,6 +4,7 @@ plugins {
     id("maven-publish")
     id("java-library")
 //    signing
+    kotlin("jvm")
 }
 
 repositories {
@@ -34,6 +35,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.22")
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.0")
+    implementation(kotlin("stdlib-jdk8"))
 
 }
 
@@ -89,3 +91,6 @@ publishing {
 //signing {
 //    sign(publishing.publications["maven"])
 //}
+kotlin {
+    jvmToolchain(8)
+}

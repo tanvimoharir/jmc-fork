@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "../../../jet-son"
+		},
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../../Downloads/j2k-evaluation-report"
+		},
+		{
+			"path": "../../../../Downloads/j2k-evaluation-report(1)"
+		},
+		{
+			"path": "../../../../Downloads/j2k-evaluation-report(2)"
+		},
+		{
+			"path": "../../../../Downloads/j2k-evaluation-report(3)"
+		},
+		{
+			"path": "../../../../Downloads/j2k-evaluation-report(4)"
+		}
+	],
+	"settings": {
+		"kiroAgent.configureMCP": "Disabled",
+		"java.configuration.updateBuildConfiguration": "interactive"
+	}
+}
